@@ -2,33 +2,409 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+model Product {
+  id               String               @id @default(cuid())
+  shop             String
+  shopifyProductId String
+  title            String
+  handle           String?
+  status           String?
+  vendor           String?
+  productType      String?
+  tags             Json?
+  totalInventory   Int?
+  publishedAt      DateTime?
+  raw              Json?
+  syncedAt         DateTime             @default(now())
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  variants         ProductVariant[]
+  discountTargets  DiscountRuleTarget[]
+  metafields       ProductMetafield[] // Uncomment when pgvector embedding is ready:
+
+  // embedding     Unsupported("vector(1536)")?
+  @@unique([shop, shopifyProductId])
+  @@index([shop, updatedAt])
+  @@index([shop, title])
+}
+
+model ProductVariant {
+  id                String               @id @default(cuid())
+  shop              String
+  shopifyVariantId  String
+  title             String?
+  sku               String?
+  barcode           String?
+  price             String?
+  compareAtPrice    String?
+  inventoryQuantity Int?
+  inventoryItemId   String?
+  raw               Json?
+  syncedAt          DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  productId         String
+  product           Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  discountTargets   DiscountRuleTarget[]
+  metafields        VariantMetafield[] // Uncomment when pgvector embedding is ready:
+
+  // embedding     Unsupported("vector(1536)")?
+  @@unique([shop, shopifyVariantId])
+  @@index([productId])
+}
+
+model Order {
+  id                   String                     @id @default(cuid())
+  shop                 String
+  shopifyOrderId       String
+  name                 String?
+  email                String?
+  currencyCode         String?
+  financialStatus      String?
+  fulfillmentStatus    String?
+  totalPrice           String?
+  subtotalPrice        String?
+  totalTax             String?
+  totalDiscounts       String?
+  processedAt          DateTime?
+  createdAtShopify     DateTime?
+  customerId           String?
+  customerDisplayName  String?
+  raw                  Json?
+  syncedAt             DateTime                   @default(now())
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  lineItems            OrderLineItem[]
+  discountApplications OrderDiscountApplication[]
+  metafields           OrderMetafield[]
+
+  @@unique([shop, shopifyOrderId])
+  @@index([shop, processedAt])
+  @@index([shop, createdAtShopify])
+  @@index([shop, customerId])
+}
+
+model OrderLineItem {
+  id                  String                            @id @default(cuid())
+  shop                String
+  shopifyLineItemId   String?
+  title               String
+  quantity            Int
+  sku                 String?
+  variantId           String?
+  productId           String?
+  price               String?
+  currencyCode        String?
+  raw                 Json?
+  syncedAt            DateTime                          @default(now())
+  createdAt           DateTime                          @default(now())
+  updatedAt           DateTime                          @updatedAt
+  orderId             String
+  order               Order                             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  discountAllocations OrderLineItemDiscountAllocation[]
+
+  @@index([shop, shopifyLineItemId])
+  @@index([orderId])
+  @@index([shop, variantId])
+}
+
+model DiscountRule {
+  id                String                     @id @default(cuid())
+  shop              String
+  shopifyDiscountId String
+  title             String?
+  status            String?
+  discountClass     String?
+  discountMethod    String?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  usageLimit        Int?
+  asyncUsageCount   Int?
+  summary           String?
+  combinesWith      Json?
+  raw               Json?
+  syncedAt          DateTime                   @default(now())
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  discountCodes     DiscountCode[]
+  targets           DiscountRuleTarget[]
+  appliedInOrders   OrderDiscountApplication[]
+  hasCode           Boolean                    @default(false)
+
+  @@unique([shop, shopifyDiscountId])
+  @@index([shop, status])
+  @@index([shop, startsAt])
+  @@index([shop, updatedAt])
+}
+
+model DiscountCode {
+  id                    String       @id @default(cuid())
+  shop                  String
+  shopifyDiscountCodeId String?
+  code                  String
+  isActive              Boolean?
+  usageCount            Int?
+  deletedAt             DateTime?
+  raw                   Json?
+  syncedAt              DateTime     @default(now())
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  discountRuleId        String
+  discountRule          DiscountRule @relation(fields: [discountRuleId], references: [id], onDelete: Cascade)
+
+  @@unique([shop, shopifyDiscountCodeId])
+  @@index([shop, code])
+  @@index([discountRuleId])
+}
+
+model DiscountRuleTarget {
+  id                  String          @id @default(cuid())
+  shop                String
+  // Supported values: LINE_ITEM | ORDER | SHIPPING_LINE
+  targetLevel         String?
+  // Supported values: PRODUCT | VARIANT | COLLECTION | ALL
+  targetType          String
+  // Supported values: APPLY_TARGET | BUY_TARGET | GET_TARGET (used for BxGy discount type)
+  targetRole          String?
+  shopifyTargetId     String?
+  collectionHandle    String?
+  shopifyCollectionId String?
+  raw                 Json?
+  syncedAt            DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  discountRuleId      String
+  discountRule        DiscountRule    @relation(fields: [discountRuleId], references: [id], onDelete: Cascade)
+  productId           String?
+  product             Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productVariantId    String?
+  productVariant      ProductVariant? @relation(fields: [productVariantId], references: [id], onDelete: SetNull)
+
+  @@index([discountRuleId])
+  @@index([shop, targetType])
+  @@index([shop, targetRole])
+  @@index([shop, shopifyTargetId])
+  @@index([shop, shopifyCollectionId])
+  @@index([productId])
+  @@index([productVariantId])
+}
+
+model OrderDiscountApplication {
+  id                              String                            @id @default(cuid())
+  shop                            String
+  shopifyDiscountApplicationIndex Int?
+  applicationType                 String?
+  allocationMethod                String?
+  targetSelection                 String?
+  targetType                      String?
+  code                            String?
+  title                           String?
+  description                     String?
+  valueType                       String?
+  value                           String?
+  appliedAmount                   String?
+  currencyCode                    String?
+  sourceShopifyDiscountId         String?
+  sourceShopifyDiscountCodeId     String?
+  discountRuleId                  String?
+  discountRule                    DiscountRule?                     @relation(fields: [discountRuleId], references: [id], onDelete: SetNull)
+  appliedAt                       DateTime?
+  raw                             Json?
+  syncedAt                        DateTime                          @default(now())
+  createdAt                       DateTime                          @default(now())
+  updatedAt                       DateTime                          @updatedAt
+  orderId                         String
+  order                           Order                             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lineItemAllocations             OrderLineItemDiscountAllocation[]
+
+  @@unique([orderId, shopifyDiscountApplicationIndex])
+  @@index([orderId])
+  @@index([shop, code])
+  @@index([shop, sourceShopifyDiscountId])
+  @@index([discountRuleId])
+}
+
+model OrderLineItemDiscountAllocation {
+  id                         String                    @id @default(cuid())
+  shop                       String
+  amount                     String?
+  currencyCode               String?
+  raw                        Json?
+  syncedAt                   DateTime                  @default(now())
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  orderLineItemId            String
+  orderLineItem              OrderLineItem             @relation(fields: [orderLineItemId], references: [id], onDelete: Cascade)
+  orderDiscountApplicationId String?
+  orderDiscountApplication   OrderDiscountApplication? @relation(fields: [orderDiscountApplicationId], references: [id], onDelete: SetNull)
+
+  @@index([orderLineItemId])
+  @@index([orderDiscountApplicationId])
+}
+
+// Registry of all metafield definitions at shop level.
+// Populated during initial crawl and auto-expanded when a webhook reveals a new namespace+key.
+model MetafieldDefinition {
+  id                String             @id @default(cuid())
+  shop              String
+  // Supported values: PRODUCT | VARIANT | ORDER | CUSTOMER | COLLECTION
+  ownerType         String
+  namespace         String
+  key               String
+  type              String
+  description       String?
+  validations       Json?
+  syncedAt          DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  productMetafields ProductMetafield[]
+  variantMetafields VariantMetafield[]
+  orderMetafields   OrderMetafield[]
+
+  @@unique([shop, ownerType, namespace, key])
+  @@index([shop, ownerType])
+}
+
+model ProductMetafield {
+  id                 String               @id @default(cuid())
+  shop               String
+  shopifyMetafieldId String
+  namespace          String
+  key                String
+  value              String?
+  valueType          String?
+  raw                Json?
+  syncedAt           DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  productId          String
+  product            Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  definitionId       String?
+  definition         MetafieldDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, shopifyMetafieldId])
+  @@unique([shop, productId, namespace, key])
+  @@index([productId])
+  @@index([definitionId])
+  @@index([shop, namespace, key])
+}
+
+model VariantMetafield {
+  id                 String               @id @default(cuid())
+  shop               String
+  shopifyMetafieldId String
+  namespace          String
+  key                String
+  value              String?
+  valueType          String?
+  raw                Json?
+  syncedAt           DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  productVariantId   String
+  productVariant     ProductVariant       @relation(fields: [productVariantId], references: [id], onDelete: Cascade)
+  definitionId       String?
+  definition         MetafieldDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, shopifyMetafieldId])
+  @@unique([shop, productVariantId, namespace, key])
+  @@index([productVariantId])
+  @@index([definitionId])
+  @@index([shop, namespace, key])
+}
+
+model OrderMetafield {
+  id                 String               @id @default(cuid())
+  shop               String
+  shopifyMetafieldId String
+  namespace          String
+  key                String
+  value              String?
+  valueType          String?
+  raw                Json?
+  syncedAt           DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  orderId            String
+  order              Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  definitionId       String?
+  definition         MetafieldDefinition? @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, shopifyMetafieldId])
+  @@unique([shop, orderId, namespace, key])
+  @@index([orderId])
+  @@index([definitionId])
+  @@index([shop, namespace, key])
+}
+
+// Option B fetch queue: when a webhook arrives for an owner (product/order/variant) that does not
+// yet exist in the DB, push a job here instead of fetching synchronously.
+// This avoids Shopify webhook timeouts while still guaranteeing eventual consistency.
+model WebhookPendingFetch {
+  id                String    @id @default(cuid())
+  shop              String
+  // Supported values: PRODUCT | VARIANT | ORDER
+  resourceType      String
+  shopifyResourceId String
+  // What triggered this fetch, e.g. "metafield_webhook", "discount_webhook"
+  reason            String?
+  // Supported values: PENDING | PROCESSING | DONE | FAILED
+  status            String    @default("PENDING")
+  retryCount        Int       @default(0)
+  lastError         String?
+  scheduledAt       DateTime  @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // One record per resource — upsert with status=PENDING each time a new webhook arrives for the same resource
+  @@unique([shop, resourceType, shopifyResourceId])
+  @@index([shop, status])
+  @@index([shop, resourceType, status])
+  @@index([scheduledAt, status])
+}
+
+model ShopifySyncState {
+  id           String    @id @default(cuid())
+  shop         String
+  resourceType String
+  lastCursor   String?
+  lastSyncedAt DateTime?
+  isRunning    Boolean   @default(false)
+  lastError    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([shop, resourceType])
+  @@index([shop, updatedAt])
 }

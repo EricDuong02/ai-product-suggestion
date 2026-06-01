@@ -1,0 +1,31 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "0207558d26d3f692abaae89fd652d827"
+name = "product-recommender"
+application_url = "https://composer-endorsed-guild-dressed.trycloudflare.com"
+embedded = true
+handle = "product-recommender-8"
+
+[webhooks]
+api_version = "2024-10"
+
+  [[webhooks.subscriptions]]
+  topics = [ "discounts/create", "discounts/update", "discounts/delete" ]
+  uri = "/api/webhooks"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_discounts,read_fulfillments,read_orders,read_products,read_reports,write_orders"
+
+[auth]
+redirect_urls = [
+  "https://composer-endorsed-guild-dressed.trycloudflare.com/auth/callback",
+  "https://composer-endorsed-guild-dressed.trycloudflare.com/auth/shopify/callback",
+  "https://composer-endorsed-guild-dressed.trycloudflare.com/api/auth/callback"
+]
+
+[pos]
+embedded = false
+
+[build]
+automatically_update_urls_on_dev = true
